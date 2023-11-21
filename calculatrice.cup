@@ -1,0 +1,311 @@
+import java_cup.runtime.*;
+import java.io.*;
+import java.util.HashMap;
+import java.util.ArrayList;
+import calculatrice.Calculatrice;
+
+
+parser code {:
+
+   public static void main(String args[]) throws Exception {
+      System.out.println("Faites entrer vos instructions : ");
+      System.out.println("-------------------------------- ");
+      new parser(new Yylex(new InputStreamReader(System.in))).parse();
+   }
+
+   // pour avoir la lingne---------------------------------------------------------------------------
+   //------------------------------------------------------------------------------------------------
+    public int pline(){
+	    return ((Yylex)getScanner()).getYyLine();
+	}
+   //-----------------------------------------------------------------------------------------------
+
+
+   // pour afficher l'erreur syntaxique à la bonne ligne---------------------------------------------
+   //------------------------------------------------------------------------------------------------
+    public void syntax_error(Symbol cur_token) {
+        int line = ((Yylex)getScanner()).getYyLine();
+        System.out.println("Syntax error at line " + line + ": Unexpected token " + cur_token.value);
+    }
+    //-----------------------------------------------------------------------------------------------
+
+:}
+
+action code {:
+
+    //------------------------------------------------------------------------------
+    /*  
+    -Class calculatrice utilisé pour le stockage des variables et des tableaux,
+    -Elle initialise la table de symbole variable et table de symbole tableau,
+    -Initilisation d'un objet calculatrice pour entamer les calcules.
+    */
+    Calculatrice calcule = new Calculatrice();
+   //-------------------------------------------------------------------------------
+
+
+   //Les listes utilisée pour l'affichage temporaire sans stockage.-------
+   //---------------------------------------------------------------------
+   ArrayList<Integer> tableau = new ArrayList<Integer>();
+   ArrayList<Integer> tableauTemp = tableau;
+   //---------------------------------------------------------------------
+
+:}
+
+// ====== SYMBOLES TERMINAUX--------------------------------------------------------
+
+terminal String  OP_PLUS,  OP_FOIS, PAR_OUV, PAR_FERM, ANTI_SLASH, 
+SEP, IDENT, TABLEAU, VIRG, AFFECT, CONCAT, PRINT;
+terminal Integer ENTIER;
+//----------------------------------------------------------------------------------
+
+
+// ====== SYMBOLES NON TERMINAUX----------------------------------------------
+
+non terminal expr; 
+non terminal Object expression, initial, decla, affect, instruct, concat, 
+declaration, tab, errors;
+//----------------------------------------------------------------------------
+
+
+// ====== GESTION DE PRIORITÉ-------------------------------------------------
+
+precedence left OP_PLUS;
+precedence left OP_FOIS;
+//----------------------------------------------------------------------------
+
+
+// ====== GRAMMAIRE --------------------------------------------------------------
+
+expr ::= instruct:e ANTI_SLASH expr |  {: System.out.println("Au revoir!"); :};
+
+instruct ::=  affect:e {:RESULT = e;
+                    System.out.println(calcule.toStringFromSymbolVar((String)e));
+                    //réinitialiser le tableau pour d'autre instructions----------//
+                    tableau = new ArrayList<Integer>() ;    
+                    tableauTemp = tableau;
+                    System.out.println("----------------------------------------");
+            :} 
+            | expression:e {:
+                System.out.println("----------------------------------------");
+                RESULT = e;
+                if (e!= null && e instanceof Integer) {
+                    System.out.println("Entier " + e);
+                }
+                //réinitialiser le tableau pour d'autre instructions----------//
+                tableau = new ArrayList<Integer>() ;
+                tableauTemp = tableau;
+                System.out.println("----------------------------------------");
+            :} 
+            | declaration:e {:
+                System.out.println("----------------------------------------");
+                RESULT = e; 
+                System.out.println(calcule.toStringFromSymbolTab((String)e));
+                //réinitialiser le tableau pour d'autre instructions----------//
+                tableau = new ArrayList<Integer>() ;
+                tableauTemp = tableau;
+                System.out.println("----------------------------------------");
+            :}
+            | concat:e {:
+                System.out.println("----------------------------------------");
+                RESULT = e;
+                System.out.println(calcule.toStringTab(tableau));
+                //réinitialiser le tableau pour d'autre instructions----------//
+                tableau = new ArrayList<Integer>();
+                tableauTemp = tableau;
+                System.out.println("----------------------------------------");
+            :}
+            | PRINT{: 
+                System.out.println("Affichage : ");
+                System.out.println("----------------------------------------");
+                calcule.print();  
+                System.out.println("----------------------------------------");
+            :}
+                
+            | errors{:
+                System.out.println("----------------------------------------");
+                System.out.println("Erreur ligne: " + pline());
+            :}
+            |
+
+            ;
+
+//======== operations plus et multiplication -------------------------------------
+
+expression ::= expression:e1 OP_PLUS expression:e2 {: 
+                        if(e1!=null && e2!=null){
+                            RESULT = (int)e1+(int)e2;
+                        }   
+                    :}|expression:e1 OP_FOIS expression: e2 {:
+                        if(e1!=null && e2!=null){
+                            RESULT = (int)e1*(int)e2;
+                        }   
+                    :}| PAR_OUV expression:e PAR_FERM {: RESULT = e ;
+                    :}| ENTIER:e {:RESULT = e;
+                    :}| IDENT:e {:
+                        if(calcule.getSymboleTable().containsKey((String)e)){
+                            RESULT = calcule.getSymboleTable().get((String)e);
+                        }else{
+                            RESULT = null;
+                            System.out.println("erreur semantique -> identificateur inconnu : "+e);
+                        }
+                    :}| tab:e {:RESULT = e; 
+                    :}| error
+                    ;
+//--------------------------------------------------------------------------------------------------
+
+//====== Initilisation et declaration d'un tableau--------------------------------------------------
+
+initial ::= SEP decla:e SEP {:
+                RESULT =e;
+            :}; 
+
+decla ::=  expression:e{:
+                RESULT = e;
+                if(e!=null)
+                    tableau.add((int)e);
+            :} VIRG decla 
+            |expression:e{:
+                RESULT = e;
+                if(e!=null)
+                    tableau.add((int)e);
+            :};
+
+declaration ::= TABLEAU:t1 AFFECT concat:c{:
+                        RESULT =(String)t1;
+                        calcule.getSymboleTableTab().put(t1, tableau);            
+               :};
+//--------------------------------------------------------------------------------------------------
+
+//=============Concatenation------------------------------------------------------------------------
+
+concat ::= initial CONCAT initial
+          |initial CONCAT initial CONCAT concat
+          |initial CONCAT TABLEAU
+          |initial CONCAT TABLEAU CONCAT concat
+          |TABLEAU:t1{:
+          
+            if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+               tableau.addAll(calcule.getSymboleTableTab().get((String)t1));
+            }else{
+                RESULT = null;
+                System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+            }  
+          
+          :} CONCAT concat
+          | initial
+          | TABLEAU:t1{:
+          
+            if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+               tableau.addAll(calcule.getSymboleTableTab().get((String)t1));
+            }else{
+                RESULT = null;
+                System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+            }  
+          
+          :};
+
+tab ::= TABLEAU:t1 SEP expression:e SEP{:
+            
+            //Make the condition if the variable t1 exists
+            if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                if((Integer)e>=0 && (Integer)e<calcule.getSymboleTableTab().get((String)t1).size()){
+                    RESULT = calcule.getSymboleTableTab().get((String)t1).get((Integer)e);
+                }else{
+                    RESULT = null;
+                    System.out.println("Accès à un indice hors du tableau");
+                }
+            }else{
+                RESULT = null;
+                System.out.println("Erreur semantique -> identificateur inconnu : "+t1);
+            }  
+        :}
+        |initial:i SEP expression:e SEP{:
+
+                if((Integer)e-(Integer)i>=0 &&  e!=null && (Integer)e>=0 && (Integer)e<tableauTemp.size()){
+                    RESULT = tableauTemp.get((Integer)e-(Integer)i);
+                    tableau = new ArrayList<Integer>();
+                }else{ 
+
+                    if((Integer)e>=0 && (Integer)e<tableauTemp.size()){
+                        RESULT = i;
+                        tableau = new ArrayList<Integer>();
+                    }else{
+                        RESULT = null;
+                        System.out.println("Accès à un indice hors du tableau");
+                    }
+                   
+                } 
+        :};
+        
+//-----------------------------------------------------------------------------------------------------
+
+
+//=============== Affectation ------------------------------------------------------------------------
+
+affect ::=  IDENT:id AFFECT expression:e{:
+                        RESULT =id;
+                        if(e!=null){
+                            calcule.getSymboleTable().put(id, (Integer)e);
+                        }     
+                    :};
+    
+//-----------------------------------------------------------------------------------------------------
+
+//============== Cas d'erreurs ------------------------------------------------------------------------
+
+errors ::=   
+             TABLEAU:t1 OP_FOIS expression{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur *");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }  
+             :} 
+           | expression OP_FOIS TABLEAU:t1{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur *");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }
+             :} 
+           | TABLEAU:t1 OP_PLUS expression{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur +");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }
+             :} 
+           | expression OP_PLUS TABLEAU:t1{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur +");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }
+             :}
+           | TABLEAU:t1 OP_FOIS errors{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur *");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }
+             :} 
+           | expression OP_FOIS errors{:
+             System.out.println("erreur de type sur l’operateur *");
+             :} 
+           | TABLEAU:t1 OP_PLUS errors{:
+                if(calcule.getSymboleTableTab().containsKey((String)t1)){ 
+                    System.out.println("erreur de type sur l’operateur +");
+                }else{
+                    RESULT = null;
+                    System.out.println("erreur semantique -> identificateur inconnu : "+t1);
+                }
+             :} 
+           | expression OP_PLUS errors{:
+             System.out.println("erreur de type sur l’operateur +");
+             :};
+
