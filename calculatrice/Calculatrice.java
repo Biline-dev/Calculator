@@ -28,13 +28,13 @@ public class Calculatrice{
    }
 
    public String toStringFromSymbolVar(String key) {
-      if(symboleTable.get(key)==null) return "null";
+      if(symboleTable.get(key)==null) return null;
       String affect = key + " = Entier " + symboleTable.get(key);
       return affect;
    }
 
    public String toStringFromSymbolTab(String key) {
-      if(symboleTableTab.get(key).size()==0) return "null";
+      if(symboleTableTab.get(key).size()==0) return null;
       String affect = key + " = " + toStringTab(symboleTableTab.get(key));
       return affect;
    }
